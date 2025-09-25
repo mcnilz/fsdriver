@@ -1,0 +1,131 @@
+syntax = "proto3";
+
+package fsdriver;
+
+option go_package = "github.com/example/fsdriver/proto";
+
+// File system service for read-only operations
+service FileSystemService {
+  // Get file/directory attributes
+  rpc Stat(StatRequest) returns (StatResponse);
+  
+  // List directory contents
+  rpc ReadDir(ReadDirRequest) returns (ReadDirResponse);
+  
+  // Open a file for reading
+  rpc Open(OpenRequest) returns (OpenResponse);
+  
+  // Read data from an open file
+  rpc Read(ReadRequest) returns (ReadResponse);
+  
+  // Close an open file
+  rpc Close(CloseRequest) returns (CloseResponse);
+  
+  // Watch for changes (bidirectional stream)
+  rpc Watch(stream WatchRequest) returns (stream WatchEvent);
+}
+
+// File attributes (POSIX-like)
+message FileInfo {
+  string name = 1;
+  bool is_dir = 2;
+  int64 size = 3;
+  int64 mod_time = 4;  // Unix timestamp
+  int64 access_time = 5;
+  int64 change_time = 6;
+  uint32 mode = 7;     // POSIX permissions
+  uint32 uid = 8;
+  uint32 gid = 9;
+  bool is_symlink = 10;
+}
+
+// Error details
+message Error {
+  int32 code = 1;        // POSIX errno
+  string message = 2;    // Human readable
+  int32 win32_code = 3;  // Original Windows error code
+}
+
+// Stat request/response
+message StatRequest {
+  string path = 1;  // Relative to share root
+}
+
+message StatResponse {
+  oneof result {
+    FileInfo info = 1;
+    Error error = 2;
+  }
+}
+
+// ReadDir request/response
+message ReadDirRequest {
+  string path = 1;  // Relative to share root
+  int32 offset = 2; // For pagination
+  int32 limit = 3;  // Max entries to return (0 = all)
+}
+
+message ReadDirResponse {
+  repeated FileInfo entries = 1;
+  bool has_more = 2;
+  Error error = 3;
+}
+
+// Open request/response
+message OpenRequest {
+  string path = 1;  // Relative to share root
+  int32 flags = 2;  // O_RDONLY, O_RDWR, etc.
+}
+
+message OpenResponse {
+  oneof result {
+    int32 handle = 1;  // File handle for subsequent operations
+    Error error = 2;
+  }
+}
+
+// Read request/response
+message ReadRequest {
+  int32 handle = 1;  // From OpenResponse
+  int64 offset = 2;  // Read offset
+  int32 size = 3;    // Bytes to read
+}
+
+message ReadResponse {
+  oneof result {
+    bytes data = 1;   // File data
+    Error error = 2;
+  }
+}
+
+// Close request/response
+message CloseRequest {
+  int32 handle = 1;  // From OpenResponse
+}
+
+message CloseResponse {
+  Error error = 1;
+}
+
+// Watch request (client to server)
+message WatchRequest {
+  string path = 1;  // Directory to watch (relative to share root)
+  bool recursive = 2;  // Watch subdirectories
+}
+
+// Watch event (server to client)
+message WatchEvent {
+  string path = 1;  // Relative to share root
+  WatchEventType type = 2;
+  string old_path = 3;  // For rename events
+  int64 timestamp = 4;  // Unix timestamp
+}
+
+enum WatchEventType {
+  UNKNOWN = 0;
+  CREATE = 1;
+  DELETE = 2;
+  MODIFY = 3;
+  RENAME = 4;
+  ATTRIB = 5;  // Attribute change
+}
