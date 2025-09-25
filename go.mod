@@ -4,6 +4,7 @@ go 1.23.0
 
 require (
 	github.com/fsnotify/fsnotify v1.7.0
+	github.com/hanwen/go-fuse/v2 v2.5.1
 	google.golang.org/grpc v1.75.1
 	google.golang.org/protobuf v1.36.9
 )
