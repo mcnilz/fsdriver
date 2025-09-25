@@ -13,9 +13,9 @@ import (
 )
 
 type fileHandle struct {
-	id      int32
-	absPath string
-	f       *os.File
+    id      int32
+    absPath string
+    file    *os.File
 }
 
 type fileSystemServer struct {
@@ -27,37 +27,43 @@ type fileSystemServer struct {
 }
 
 func NewFileSystemServer(root string) (*fileSystemServer, error) {
-	abs, err := filepath.Abs(root)
-	if err != nil {
-		return nil, err
-	}
-	return &fileSystemServer{root: abs, handles: make(map[int32]*fileHandle)}, nil
+    abs, err := filepath.Abs(root)
+    if err != nil {
+        return nil, err
+    }
+    return &fileSystemServer{root: abs, handles: make(map[int32]*fileHandle)}, nil
 }
 
 func (s *fileSystemServer) confine(rel string) (string, error) {
-	// Normalize and ensure path stays within root
-	cleaned := filepath.Clean(rel)
-	joined := filepath.Join(s.root, cleaned)
-	abs, err := filepath.Abs(joined)
-	if err != nil {
-		return "", err
-	}
-	if abs != s.root && !isSubpath(abs, s.root) {
-		return "", errors.New("path escapes root")
-	}
-	return abs, nil
+    return normalizeWithinRoot(s.root, rel)
 }
 
 func isSubpath(path string, root string) bool {
-	rel, err := filepath.Rel(root, path)
-	if err != nil {
-		return false
-	}
-	return rel != ".." && !startsWithDotDot(rel)
+    rel, err := filepath.Rel(root, path)
+    if err != nil {
+        return false
+    }
+    if rel == "." {
+        return true
+    }
+    return rel != ".." && !startsWithDotDot(rel)
 }
 
 func startsWithDotDot(rel string) bool {
-	return rel == ".." || len(rel) > 3 && rel[:3] == "..\\" || len(rel) > 3 && rel[:3] == "../"
+    return rel == ".." || (len(rel) >= 3 && (rel[:3] == "..\\" || rel[:3] == "../"))
+}
+
+func normalizeWithinRoot(root string, rel string) (string, error) {
+    cleaned := filepath.Clean(rel)
+    joined := filepath.Join(root, cleaned)
+    abs, err := filepath.Abs(joined)
+    if err != nil {
+        return "", err
+    }
+    if abs != root && !isSubpath(abs, root) {
+        return "", errors.New("path escapes root")
+    }
+    return abs, nil
 }
 
 func (s *fileSystemServer) toFileInfo(fi os.FileInfo) *pb.FileInfo {
@@ -125,33 +131,27 @@ func (s *fileSystemServer) Open(ctx context.Context, req *pb.OpenRequest) (*pb.O
 	if err != nil {
 		return &pb.OpenResponse{Result: &pb.OpenResponse_Error{Error: errno(err)}}, nil
 	}
-	f, err := os.Open(abs)
+    f, err := os.Open(abs)
 	if err != nil {
 		return &pb.OpenResponse{Result: &pb.OpenResponse_Error{Error: errno(err)}}, nil
 	}
-	s.mu.Lock()
-	s.nextHandleID++
-	hid := s.nextHandleID
-	s.handles[hid] = &fileHandle{id: hid, absPath: abs, f: f}
-	s.mu.Unlock()
+    hid := s.registerHandle(abs, f)
 	return &pb.OpenResponse{Result: &pb.OpenResponse_Handle{Handle: hid}}, nil
 }
 
 func (s *fileSystemServer) Read(ctx context.Context, req *pb.ReadRequest) (*pb.ReadResponse, error) {
-	s.mu.Lock()
-	h := s.handles[req.Handle]
-	s.mu.Unlock()
+    h := s.getHandle(req.Handle)
 	if h == nil {
 		return &pb.ReadResponse{Result: &pb.ReadResponse_Error{Error: &pb.Error{Code: int32(2), Message: "bad handle"}}}, nil
 	}
 	if req.Offset < 0 || req.Size < 0 {
 		return &pb.ReadResponse{Result: &pb.ReadResponse_Error{Error: &pb.Error{Code: int32(22), Message: "invalid offset/size"}}}, nil
 	}
-	if _, err := h.f.Seek(req.Offset, io.SeekStart); err != nil {
+    if _, err := h.file.Seek(req.Offset, io.SeekStart); err != nil {
 		return &pb.ReadResponse{Result: &pb.ReadResponse_Error{Error: errno(err)}}, nil
 	}
 	buf := make([]byte, req.Size)
-	n, err := io.ReadFull(h.f, buf)
+    n, err := io.ReadFull(h.file, buf)
 	if err == io.ErrUnexpectedEOF || err == io.EOF {
 		// partial read at EOF is fine
 		return &pb.ReadResponse{Result: &pb.ReadResponse_Data{Data: buf[:n]}}, nil
@@ -163,16 +163,11 @@ func (s *fileSystemServer) Read(ctx context.Context, req *pb.ReadRequest) (*pb.R
 }
 
 func (s *fileSystemServer) Close(ctx context.Context, req *pb.CloseRequest) (*pb.CloseResponse, error) {
-	s.mu.Lock()
-	h := s.handles[req.Handle]
-	if h != nil {
-		delete(s.handles, req.Handle)
-	}
-	s.mu.Unlock()
+    h := s.takeHandle(req.Handle)
 	if h == nil {
 		return &pb.CloseResponse{Error: &pb.Error{Code: int32(2), Message: "bad handle"}}, nil
 	}
-	_ = h.f.Close()
+    _ = h.file.Close()
 	return &pb.CloseResponse{}, nil
 }
 
@@ -190,3 +185,29 @@ func errno(err error) *pb.Error {
 
 // prevent unused imports warnings during early development
 var _ = time.Now
+
+// handle management helpers
+func (s *fileSystemServer) registerHandle(absPath string, f *os.File) int32 {
+    s.mu.Lock()
+    defer s.mu.Unlock()
+    s.nextHandleID++
+    id := s.nextHandleID
+    s.handles[id] = &fileHandle{id: id, absPath: absPath, file: f}
+    return id
+}
+
+func (s *fileSystemServer) getHandle(id int32) *fileHandle {
+    s.mu.Lock()
+    defer s.mu.Unlock()
+    return s.handles[id]
+}
+
+func (s *fileSystemServer) takeHandle(id int32) *fileHandle {
+    s.mu.Lock()
+    defer s.mu.Unlock()
+    h := s.handles[id]
+    if h != nil {
+        delete(s.handles, id)
+    }
+    return h
+}

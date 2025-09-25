@@ -22,4 +22,14 @@
 - Strukturierte Logs (JSON) mit Korrelation (req_id)
 - Basis-Metriken: Latenz/Fehler pro RPC, Eventrate, offene Handles
 
+## Clean Code Leitlinien
+- Benennungen: aussagekräftige, vollständige Wörter; Funktionen sind Verben, Variablen Substantive
+- Funktionen klein halten (<50 Zeilen), Single Responsibility, frühe Rückgaben
+- Fehlerbehandlung erstklassig: keine stummen Catches; eindeutige Fehlerpfade
+- Keine tiefe Verschachtelung: Guard Clauses bevorzugen
+- Trenne Domänenlogik von I/O (z. B. Pfad-Validierung separat von RPC-Handlern)
+- Keine globalen Zustände außer bewusst verwalteten Singletons (z. B. Logger)
+- Kommentare sparsam; erklären das „Warum“, nicht das „Wie“
+- Einheitliches Format und Linting; keine toten Codes
+
 
