@@ -3,6 +3,7 @@ module github.com/example/fsdriver
 go 1.23.0
 
 require (
+	github.com/fsnotify/fsnotify v1.7.0
 	google.golang.org/grpc v1.75.1
 	google.golang.org/protobuf v1.36.9
 )
