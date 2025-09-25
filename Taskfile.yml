@@ -1,0 +1,17 @@
+version: "3"
+
+vars:
+  GO_BIN: go
+
+tasks:
+  build:
+    cmds:
+      - echo "build server/client (placeholder)"
+  test:
+    cmds:
+      - echo "run tests (placeholder)"
+  lint:
+    cmds:
+      - echo "lint (placeholder)"
+
+

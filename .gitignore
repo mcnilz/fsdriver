@@ -1,0 +1,22 @@
+# Go/General
+/bin/
+/build/
+/dist/
+/tmp/
+*.log
+*.tmp
+*.swp
+.DS_Store
+Thumbs.db
+
+# Node/Tools (if used)
+node_modules/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+*.lnk
+
+
