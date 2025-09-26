@@ -29,20 +29,22 @@ func newGRPCClient(addr string) (*grpcClient, error) {
 		return nil, fmt.Errorf("dial server: %w", err)
 	}
 	log.Printf("gRPC connection established to %s", addr)
-	
+
 	// Test the connection with a simple call
 	client := pb.NewFileSystemServiceClient(conn)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	
-	// Try to stat the root directory to test connection
-	_, err = client.Stat(ctx, &pb.StatRequest{Path: ""})
+
+	// Try to read the root directory to test connection
+	log.Printf("Testing connection with ReadDir request...")
+	_, err = client.ReadDir(ctx, &pb.ReadDirRequest{Path: "", Offset: 0, Limit: 1})
 	if err != nil {
 		log.Printf("Connection test failed: %v", err)
 		conn.Close()
 		return nil, fmt.Errorf("connection test failed: %w", err)
 	}
-	
+	log.Printf("Connection test successful")
+
 	log.Printf("Successfully connected and tested server at %s", addr)
 	return &grpcClient{
 		conn:   conn,
@@ -58,12 +60,12 @@ func (c *grpcClient) Stat(ctx context.Context, path string) (*pb.FileInfo, error
 	c.mu.RLock()
 	client := c.client
 	c.mu.RUnlock()
-	
+
 	resp, err := client.Stat(ctx, &pb.StatRequest{Path: path})
 	if err != nil {
 		return nil, err
 	}
-	
+
 	switch result := resp.Result.(type) {
 	case *pb.StatResponse_Info:
 		return result.Info, nil
@@ -78,7 +80,7 @@ func (c *grpcClient) ReadDir(ctx context.Context, path string, offset, limit int
 	c.mu.RLock()
 	client := c.client
 	c.mu.RUnlock()
-	
+
 	resp, err := client.ReadDir(ctx, &pb.ReadDirRequest{
 		Path:   path,
 		Offset: offset,
@@ -87,11 +89,11 @@ func (c *grpcClient) ReadDir(ctx context.Context, path string, offset, limit int
 	if err != nil {
 		return nil, false, err
 	}
-	
+
 	if resp.Error != nil {
 		return nil, false, fmt.Errorf("readdir error %d: %s", resp.Error.Code, resp.Error.Message)
 	}
-	
+
 	return resp.Entries, resp.HasMore, nil
 }
 
@@ -99,12 +101,12 @@ func (c *grpcClient) Open(ctx context.Context, path string, flags int32) (int32,
 	c.mu.RLock()
 	client := c.client
 	c.mu.RUnlock()
-	
+
 	resp, err := client.Open(ctx, &pb.OpenRequest{Path: path, Flags: flags})
 	if err != nil {
 		return 0, err
 	}
-	
+
 	switch result := resp.Result.(type) {
 	case *pb.OpenResponse_Handle:
 		return result.Handle, nil
@@ -119,7 +121,7 @@ func (c *grpcClient) Read(ctx context.Context, handle int32, offset int64, size 
 	c.mu.RLock()
 	client := c.client
 	c.mu.RUnlock()
-	
+
 	resp, err := client.Read(ctx, &pb.ReadRequest{
 		Handle: handle,
 		Offset: offset,
@@ -128,7 +130,7 @@ func (c *grpcClient) Read(ctx context.Context, handle int32, offset int64, size 
 	if err != nil {
 		return nil, err
 	}
-	
+
 	switch result := resp.Result.(type) {
 	case *pb.ReadResponse_Data:
 		return result.Data, nil
@@ -143,15 +145,15 @@ func (c *grpcClient) CloseHandle(ctx context.Context, handle int32) error {
 	c.mu.RLock()
 	client := c.client
 	c.mu.RUnlock()
-	
+
 	resp, err := client.Close(ctx, &pb.CloseRequest{Handle: handle})
 	if err != nil {
 		return err
 	}
-	
+
 	if resp.Error != nil {
 		return fmt.Errorf("close error %d: %s", resp.Error.Code, resp.Error.Message)
 	}
-	
+
 	return nil
 }
