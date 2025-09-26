@@ -34,15 +34,19 @@ func newFuseFS(client *grpcClient, share string) *fuseFS {
 
 func (f *fuseFS) Getattr(ctx context.Context, fh fs.FileHandle, out *fuse.Attr) syscall.Errno {
 	path := f.getPath(ctx)
+	log.Printf("Getattr: path=%s", path)
 	if path == "" {
+		log.Printf("Getattr: empty path, returning ENOENT")
 		return syscall.ENOENT
 	}
 
 	info, err := f.client.Stat(ctx, path)
 	if err != nil {
+		log.Printf("Getattr: Stat failed for path=%s, error=%v", path, err)
 		return f.mapError(err)
 	}
 
+	log.Printf("Getattr: Stat success for path=%s, name=%s, isDir=%v", path, info.Name, info.IsDir)
 	f.fillAttr(info, out)
 	return 0
 }
@@ -65,6 +69,7 @@ func (f *fuseFS) ReadDir(ctx context.Context) (fs.DirStream, syscall.Errno) {
 	path := f.getPath(ctx)
 	log.Printf("ReadDir: path=%s", path)
 	if path == "" {
+		log.Printf("ReadDir: empty path, returning ENOENT")
 		return nil, syscall.ENOENT
 	}
 
@@ -73,13 +78,14 @@ func (f *fuseFS) ReadDir(ctx context.Context) (fs.DirStream, syscall.Errno) {
 	if f.path != "" {
 		requestPath = f.path
 	}
+	log.Printf("ReadDir: calling gRPC ReadDir with requestPath=%s", requestPath)
 	
 	entries, _, err := f.client.ReadDir(ctx, requestPath, 0, 0)
 	if err != nil {
-		log.Printf("ReadDir error: %v", err)
+		log.Printf("ReadDir: gRPC call failed, requestPath=%s, error=%v", requestPath, err)
 		return nil, f.mapError(err)
 	}
-	log.Printf("ReadDir: found %d entries", len(entries))
+	log.Printf("ReadDir: gRPC success, found %d entries", len(entries))
 
 	dirEntries := make([]fuse.DirEntry, 0, len(entries))
 	for _, info := range entries {
@@ -106,15 +112,20 @@ func (f *fuseFS) ReadDir(ctx context.Context) (fs.DirStream, syscall.Errno) {
 
 func (f *fuseFS) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
 	path := f.getPath(ctx)
+	log.Printf("Lookup: path=%s, name=%s", path, name)
 	if path == "" {
+		log.Printf("Lookup: empty path, returning ENOENT")
 		return nil, syscall.ENOENT
 	}
 
 	childPath := filepath.Join(path, name)
+	log.Printf("Lookup: calling Stat for childPath=%s", childPath)
 	info, err := f.client.Stat(ctx, childPath)
 	if err != nil {
+		log.Printf("Lookup: Stat failed for childPath=%s, error=%v", childPath, err)
 		return nil, f.mapError(err)
 	}
+	log.Printf("Lookup: Stat success for childPath=%s, name=%s, isDir=%v", childPath, info.Name, info.IsDir)
 
 	child := f.NewInode(ctx, &fuseFS{client: f.client, share: f.share, path: childPath}, fs.StableAttr{
 		Mode: f.modeFromInfo(info),

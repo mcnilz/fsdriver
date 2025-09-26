@@ -24,32 +24,32 @@ func main() {
 		os.Exit(2)
 	}
 
-    // Validate share path exists and is a directory
-    info, err := os.Stat(share)
-    if err != nil {
-        logx.Error("share path invalid", "error", err)
-        os.Exit(2)
-    }
-    if !info.IsDir() {
-        logx.Error("share must be a directory", "share", share)
-        os.Exit(2)
-    }
-    
-    // Debug: List directory contents
-    entries, err := os.ReadDir(share)
-    if err != nil {
-        logx.Error("failed to read share directory", "error", err)
-        os.Exit(2)
-    }
-    logx.Info("share directory contents", "path", share, "count", len(entries))
-    for i, entry := range entries {
-        if i < 10 { // Show first 10 entries
-            logx.Info("entry", "name", entry.Name(), "is_dir", entry.IsDir())
-        }
-    }
-    if len(entries) > 10 {
-        logx.Info("... and more entries", "total", len(entries))
-    }
+	// Validate share path exists and is a directory
+	info, err := os.Stat(share)
+	if err != nil {
+		logx.Error("share path invalid", "error", err)
+		os.Exit(2)
+	}
+	if !info.IsDir() {
+		logx.Error("share must be a directory", "share", share)
+		os.Exit(2)
+	}
+
+	// Debug: List directory contents
+	entries, err := os.ReadDir(share)
+	if err != nil {
+		logx.Error("failed to read share directory", "error", err)
+		os.Exit(2)
+	}
+	logx.Info("share directory contents", "path", share, "count", len(entries))
+	for i, entry := range entries {
+		if i < 10 { // Show first 10 entries
+			logx.Info("entry", "name", entry.Name(), "is_dir", entry.IsDir())
+		}
+	}
+	if len(entries) > 10 {
+		logx.Info("... and more entries", "total", len(entries))
+	}
 
 	lis, err := net.Listen("tcp", addr)
 	if err != nil {
@@ -65,23 +65,23 @@ func main() {
 	}
 	pb.RegisterFileSystemServiceServer(grpcServer, srv)
 
-    logx.Info("fsdriver server listening", "addr", addr, "share", share)
-    
-    // Show all available network interfaces
-    interfaces, err := net.Interfaces()
-    if err == nil {
-        logx.Info("available network interfaces:")
-        for _, iface := range interfaces {
-            addrs, err := iface.Addrs()
-            if err == nil && len(addrs) > 0 {
-                logx.Info("interface", "name", iface.Name, "addresses", addrs)
-            }
-        }
-    }
-    
-    logx.Info("server ready to accept connections")
-    if err := grpcServer.Serve(lis); err != nil {
-        fmt.Fprintf(os.Stderr, "server error: %v\n", err)
-        os.Exit(1)
-    }
+	logx.Info("fsdriver server listening", "addr", addr, "share", share)
+
+	// Show all available network interfaces
+	interfaces, err := net.Interfaces()
+	if err == nil {
+		logx.Info("available network interfaces:")
+		for _, iface := range interfaces {
+			addrs, err := iface.Addrs()
+			if err == nil && len(addrs) > 0 {
+				logx.Info("interface", "name", iface.Name, "addresses", addrs)
+			}
+		}
+	}
+
+	logx.Info("server ready to accept connections")
+	if err := grpcServer.Serve(lis); err != nil {
+		fmt.Fprintf(os.Stderr, "server error: %v\n", err)
+		os.Exit(1)
+	}
 }

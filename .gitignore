@@ -13,6 +13,7 @@ Thumbs.db
 server.exe
 client.exe
 client/client
+test_client/test_client.exe
 
 # Node/Tools (if used)
 node_modules/

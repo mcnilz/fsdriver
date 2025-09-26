@@ -4,6 +4,7 @@
 - Windows 10/11 mit WSL2
 - Go >= 1.22 installiert
 - protoc installiert und im PATH (`protoc --version`)
+- **WSL2 Networking**: Siehe [WSL2 Networking Konfiguration](wsl-networking.md) für die richtige Einrichtung
 
 ### Build
 ```bash
@@ -12,12 +13,30 @@ go build ./...
 
 ### Server starten (Windows)
 ```bash
-fsdriver\server.exe --share C:\\path\\to\\dir --addr 127.0.0.1:50051
+fsdriver\server.exe --share C:\\path\\to\\dir --addr 0.0.0.0:50052
 ```
 
 Parameter:
 - `--share`: Root-Verzeichnis, das freigegeben wird (muss existieren)
-- `--addr`: Listen-Adresse (Default: 127.0.0.1:50051)
+- `--addr`: Listen-Adresse (Default: 127.0.0.1:50051, empfohlen: 0.0.0.0:50052)
+
+### Client mounten (WSL2)
+```bash
+# Mit mirrored networking (empfohlen)
+sudo ./client --share test --mountpoint /mnt/fsdriver/test --addr 127.0.0.1:50052
+
+# Mit manueller IP-Konfiguration
+sudo ./client --share test --mountpoint /mnt/fsdriver/test --addr 172.20.16.1:50052
+```
+
+### Verbindung testen
+```bash
+# Test-Server-Erreichbarkeit von Windows
+./test_client.exe 127.0.0.1:50052
+
+# Test von WSL2 (wenn Networking korrekt konfiguriert)
+./test_client.exe 127.0.0.1:50052
+```
 
 ### Proto neu generieren (bei Änderungen)
 ```bash
