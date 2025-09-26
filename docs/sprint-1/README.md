@@ -10,9 +10,11 @@ Definition of Done:
 
 Tickets liegen als einzelne Markdown-Dateien in diesem Ordner.
 
-### Aktueller Stand (nach T01/T02)
+### Aktueller Stand (nach T01-T04)
 - T01: `proto/fsdriver.proto` erstellt, Go-Stubs generiert
 - T02: Windows gRPC-Server (read-only) implementiert (`server/*`), CLI `--share`, `--addr`
+- T03: Watch-Stream mit fsnotify implementiert (rekursiv, Event-Mapping)
+- T04: FUSE-Client (read-only) implementiert (`client/*`), Linux-only Build-Constraints
 - Build/Run-Hinweise siehe `docs/usage.md`
 
 
