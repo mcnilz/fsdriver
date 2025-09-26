@@ -23,9 +23,9 @@ type grpcClient struct {
 
 func newGRPCClient(addr string) (*grpcClient, error) {
 	log.Printf("Connecting to server at %s", addr)
-	conn, err := grpc.Dial(addr, 
+	conn, err := grpc.Dial(addr,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithBlock(), // Wait for connection to be ready
+		grpc.WithBlock(),                 // Wait for connection to be ready
 		grpc.WithTimeout(10*time.Second), // Connection timeout
 	)
 	if err != nil {

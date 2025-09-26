@@ -60,12 +60,16 @@ func (s *fileSystemServer) Stat(ctx context.Context, req *pb.StatRequest) (*pb.S
 }
 
 func (s *fileSystemServer) ReadDir(ctx context.Context, req *pb.ReadDirRequest) (*pb.ReadDirResponse, error) {
+	logx.Info("ReadDir request", "path", req.Path, "offset", req.Offset, "limit", req.Limit)
 	abs, err := s.confine(req.Path)
 	if err != nil {
+		logx.Error("ReadDir path confinement failed", "path", req.Path, "error", err)
 		return &pb.ReadDirResponse{Error: errno(err)}, nil
 	}
+	logx.Info("ReadDir confined path", "original", req.Path, "absolute", abs)
 	f, err := os.Open(abs)
 	if err != nil {
+		logx.Error("ReadDir open failed", "path", abs, "error", err)
 		return &pb.ReadDirResponse{Error: errno(err)}, nil
 	}
 	defer f.Close()
@@ -88,6 +92,7 @@ func (s *fileSystemServer) ReadDir(ctx context.Context, req *pb.ReadDirRequest) 
 		out = append(out, s.toFileInfo(entries[i]))
 	}
 	hasMore := (offset+len(out) < len(entries))
+	logx.Info("ReadDir response", "entries_returned", len(out), "total_entries", len(entries), "has_more", hasMore)
 	return &pb.ReadDirResponse{Entries: out, HasMore: hasMore}, nil
 }
 
