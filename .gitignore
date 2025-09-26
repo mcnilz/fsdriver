@@ -9,6 +9,12 @@
 .DS_Store
 Thumbs.db
 
+# Build artifacts
+server.exe
+client.exe
+client/
+server/
+
 # Node/Tools (if used)
 node_modules/
 
