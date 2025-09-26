@@ -23,32 +23,21 @@ type grpcClient struct {
 
 func newGRPCClient(addr string) (*grpcClient, error) {
 	log.Printf("Connecting to server at %s", addr)
-	conn, err := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.Dial(addr, 
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithBlock(), // Wait for connection to be ready
+		grpc.WithTimeout(10*time.Second), // Connection timeout
+	)
 	if err != nil {
 		log.Printf("Failed to connect to server: %v", err)
 		return nil, fmt.Errorf("dial server: %w", err)
 	}
 	log.Printf("gRPC connection established to %s", addr)
 
-	// Test the connection with a simple call
-	client := pb.NewFileSystemServiceClient(conn)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	// Try to read the root directory to test connection
-	log.Printf("Testing connection with ReadDir request...")
-	_, err = client.ReadDir(ctx, &pb.ReadDirRequest{Path: "", Offset: 0, Limit: 1})
-	if err != nil {
-		log.Printf("Connection test failed: %v", err)
-		conn.Close()
-		return nil, fmt.Errorf("connection test failed: %w", err)
-	}
-	log.Printf("Connection test successful")
-
-	log.Printf("Successfully connected and tested server at %s", addr)
+	log.Printf("Successfully connected to server at %s", addr)
 	return &grpcClient{
 		conn:   conn,
-		client: client,
+		client: pb.NewFileSystemServiceClient(conn),
 	}, nil
 }
 
