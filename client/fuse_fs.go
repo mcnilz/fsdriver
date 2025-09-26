@@ -21,12 +21,14 @@ type fuseFS struct {
 	fs.Inode
 	client *grpcClient
 	share  string
+	path   string // Current path for this node
 }
 
 func newFuseFS(client *grpcClient, share string) *fuseFS {
 	return &fuseFS{
 		client: client,
 		share:  share,
+		path:   "", // Root path
 	}
 }
 
@@ -61,14 +63,23 @@ func (f *fuseFS) Open(ctx context.Context, fh fs.FileHandle, flags uint32) (fs.F
 
 func (f *fuseFS) ReadDir(ctx context.Context) (fs.DirStream, syscall.Errno) {
 	path := f.getPath(ctx)
+	log.Printf("ReadDir: path=%s", path)
 	if path == "" {
 		return nil, syscall.ENOENT
 	}
 
-	entries, _, err := f.client.ReadDir(ctx, path, 0, 0)
+	// For root directory, use empty path to get share contents
+	requestPath := ""
+	if f.path != "" {
+		requestPath = f.path
+	}
+	
+	entries, _, err := f.client.ReadDir(ctx, requestPath, 0, 0)
 	if err != nil {
+		log.Printf("ReadDir error: %v", err)
 		return nil, f.mapError(err)
 	}
+	log.Printf("ReadDir: found %d entries", len(entries))
 
 	dirEntries := make([]fuse.DirEntry, 0, len(entries))
 	for _, info := range entries {
@@ -105,7 +116,7 @@ func (f *fuseFS) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*
 		return nil, f.mapError(err)
 	}
 
-	child := f.NewInode(ctx, &fuseFS{client: f.client, share: f.share}, fs.StableAttr{
+	child := f.NewInode(ctx, &fuseFS{client: f.client, share: f.share, path: childPath}, fs.StableAttr{
 		Mode: f.modeFromInfo(info),
 		Ino:  f.hashIno(childPath),
 	})
@@ -115,9 +126,11 @@ func (f *fuseFS) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*
 }
 
 func (f *fuseFS) getPath(ctx context.Context) string {
-	// Extract path from context or use root
-	// For now, return the share root
-	return ""
+	// Return the current path for this node
+	if f.path == "" {
+		return f.share // Root directory
+	}
+	return f.path
 }
 
 func (f *fuseFS) fillAttr(info *pb.FileInfo, out *fuse.Attr) {

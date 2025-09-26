@@ -15,12 +15,16 @@ import (
 )
 
 func mountRemote(share, mountpoint, addr string, readOnly bool) error {
+	log.Printf("Starting mount: share=%s, mountpoint=%s, addr=%s, ro=%v", share, mountpoint, addr, readOnly)
+	
 	// Create gRPC client
 	client, err := newGRPCClient(addr)
 	if err != nil {
 		return fmt.Errorf("connect to server: %w", err)
 	}
 	defer client.Close()
+	
+	log.Printf("gRPC client created successfully")
 
 	// Create FUSE filesystem
 	fuseFS := newFuseFS(client, share)
@@ -30,7 +34,7 @@ func mountRemote(share, mountpoint, addr string, readOnly bool) error {
 	attrTimeout := 1 * time.Second
 	opts := &fs.Options{
 		MountOptions: fuse.MountOptions{
-			Debug: false,
+			Debug: true, // Enable debug logging
 		},
 		EntryTimeout: &entryTimeout,
 		AttrTimeout:  &attrTimeout,

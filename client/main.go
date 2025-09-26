@@ -26,17 +26,17 @@ func main() {
 		fmt.Fprintf(os.Stderr, "  %s --share test --mountpoint /mnt/fsdriver/test --addr 127.0.0.1:50055\n", os.Args[0])
 	}
 
-    flag.Parse()
+	flag.Parse()
 
-    // Check for positional arguments (not allowed)
-    if len(flag.Args()) > 0 {
-        fmt.Fprintf(os.Stderr, "Error: positional arguments not allowed: %v\n", flag.Args())
-        fmt.Fprintf(os.Stderr, "Use --addr flag instead: --addr %s\n", flag.Args()[0])
-        flag.Usage()
-        os.Exit(2)
-    }
+	// Check for positional arguments (not allowed)
+	if len(flag.Args()) > 0 {
+		fmt.Fprintf(os.Stderr, "Error: positional arguments not allowed: %v\n", flag.Args())
+		fmt.Fprintf(os.Stderr, "Use --addr flag instead: --addr %s\n", flag.Args()[0])
+		flag.Usage()
+		os.Exit(2)
+	}
 
-    // Validate required parameters
+	// Validate required parameters
 	if share == "" {
 		fmt.Fprintln(os.Stderr, "Error: --share is required")
 		flag.Usage()

@@ -5,7 +5,9 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"sync"
+	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -20,13 +22,31 @@ type grpcClient struct {
 }
 
 func newGRPCClient(addr string) (*grpcClient, error) {
+	log.Printf("Connecting to server at %s", addr)
 	conn, err := grpc.Dial(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
+		log.Printf("Failed to connect to server: %v", err)
 		return nil, fmt.Errorf("dial server: %w", err)
 	}
+	log.Printf("gRPC connection established to %s", addr)
+	
+	// Test the connection with a simple call
+	client := pb.NewFileSystemServiceClient(conn)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	
+	// Try to stat the root directory to test connection
+	_, err = client.Stat(ctx, &pb.StatRequest{Path: ""})
+	if err != nil {
+		log.Printf("Connection test failed: %v", err)
+		conn.Close()
+		return nil, fmt.Errorf("connection test failed: %w", err)
+	}
+	
+	log.Printf("Successfully connected and tested server at %s", addr)
 	return &grpcClient{
 		conn:   conn,
-		client: pb.NewFileSystemServiceClient(conn),
+		client: client,
 	}, nil
 }
 
