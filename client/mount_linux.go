@@ -3,7 +3,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"log"
 	"os"
@@ -27,12 +26,14 @@ func mountRemote(share, mountpoint, addr string, readOnly bool) error {
 	fuseFS := newFuseFS(client, share)
 
 	// Mount options
+	entryTimeout := 1 * time.Second
+	attrTimeout := 1 * time.Second
 	opts := &fs.Options{
 		MountOptions: fuse.MountOptions{
 			Debug: false,
 		},
-		EntryTimeout: 1 * time.Second,
-		AttrTimeout:  1 * time.Second,
+		EntryTimeout: &entryTimeout,
+		AttrTimeout:  &attrTimeout,
 	}
 
 	// Mount the filesystem
@@ -43,17 +44,13 @@ func mountRemote(share, mountpoint, addr string, readOnly bool) error {
 
 	log.Printf("FUSE filesystem mounted at %s (share=%s, server=%s)", mountpoint, share, addr)
 
-	// Wait for interrupt
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 
 	go func() {
 		<-sigCh
 		log.Println("Received signal, unmounting...")
-		cancel()
+		_ = server.Unmount()
 	}()
 
 	// Serve the filesystem
@@ -61,5 +58,3 @@ func mountRemote(share, mountpoint, addr string, readOnly bool) error {
 
 	return nil
 }
-
-
