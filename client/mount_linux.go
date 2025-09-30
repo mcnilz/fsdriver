@@ -3,6 +3,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
@@ -16,15 +17,28 @@ import (
 
 func mountRemote(share, mountpoint, addr string, readOnly bool) error {
 	log.Printf("Starting mount: share=%s, mountpoint=%s, addr=%s, ro=%v", share, mountpoint, addr, readOnly)
-	
+
 	// Create gRPC client
 	client, err := newGRPCClient(addr)
 	if err != nil {
 		return fmt.Errorf("connect to server: %w", err)
 	}
 	defer client.Close()
-	
+
 	log.Printf("gRPC client created successfully")
+
+	// Test connection before proceeding with mount
+	log.Printf("Testing connection to server...")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := client.TestConnection(ctx); err != nil {
+		log.Printf("Connection test failed: %v", err)
+		return fmt.Errorf("server connection test failed - please ensure server is running and accessible: %w", err)
+	}
+
+	log.Printf("Connection test passed - server is reachable and responsive")
+	log.Printf("Proceeding with FUSE mount...")
 
 	// Create FUSE filesystem
 	fuseFS := newFuseFS(client, share)
@@ -35,6 +49,8 @@ func mountRemote(share, mountpoint, addr string, readOnly bool) error {
 	opts := &fs.Options{
 		MountOptions: fuse.MountOptions{
 			Debug: true, // Enable debug logging
+			// Disable ReadDirPlus to force use of ReadDir
+			DisableReadDirPlus: true,
 		},
 		EntryTimeout: &entryTimeout,
 		AttrTimeout:  &attrTimeout,

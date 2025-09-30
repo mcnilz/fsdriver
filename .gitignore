@@ -14,6 +14,7 @@ server.exe
 client.exe
 client/client
 test_client/test_client.exe
+test_client/test_client
 
 # Node/Tools (if used)
 node_modules/

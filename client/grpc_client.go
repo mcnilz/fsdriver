@@ -45,6 +45,34 @@ func (c *grpcClient) Close() error {
 	return c.conn.Close()
 }
 
+// TestConnection performs a simple test to verify the server is reachable and responsive
+func (c *grpcClient) TestConnection(ctx context.Context) error {
+	c.mu.RLock()
+	client := c.client
+	c.mu.RUnlock()
+
+	// Try to stat the root directory as a simple connectivity test
+	resp, err := client.Stat(ctx, &pb.StatRequest{Path: "."})
+	if err != nil {
+		return fmt.Errorf("connection test failed: %w", err)
+	}
+
+	// Check if we got a valid response
+	switch result := resp.Result.(type) {
+	case *pb.StatResponse_Info:
+		if !result.Info.IsDir {
+			return fmt.Errorf("server root is not a directory")
+		}
+		log.Printf("Connection test successful - server root is accessible (name: %s)", result.Info.Name)
+	case *pb.StatResponse_Error:
+		return fmt.Errorf("server returned error: %d - %s", result.Error.Code, result.Error.Message)
+	default:
+		return fmt.Errorf("unexpected server response")
+	}
+
+	return nil
+}
+
 func (c *grpcClient) Stat(ctx context.Context, path string) (*pb.FileInfo, error) {
 	c.mu.RLock()
 	client := c.client
@@ -70,19 +98,24 @@ func (c *grpcClient) ReadDir(ctx context.Context, path string, offset, limit int
 	client := c.client
 	c.mu.RUnlock()
 
+	log.Printf("gRPC ReadDir call: path=%s, offset=%d, limit=%d", path, offset, limit)
+
 	resp, err := client.ReadDir(ctx, &pb.ReadDirRequest{
 		Path:   path,
 		Offset: offset,
 		Limit:  limit,
 	})
 	if err != nil {
+		log.Printf("gRPC ReadDir call failed: %v", err)
 		return nil, false, err
 	}
 
 	if resp.Error != nil {
+		log.Printf("gRPC ReadDir server error: %d - %s", resp.Error.Code, resp.Error.Message)
 		return nil, false, fmt.Errorf("readdir error %d: %s", resp.Error.Code, resp.Error.Message)
 	}
 
+	log.Printf("gRPC ReadDir call successful: %d entries, hasMore=%v", len(resp.Entries), resp.HasMore)
 	return resp.Entries, resp.HasMore, nil
 }
 

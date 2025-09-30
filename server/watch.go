@@ -9,18 +9,32 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
+	"google.golang.org/grpc/peer"
 
 	pb "github.com/example/fsdriver/proto"
 )
 
 // Watch implements the bidirectional stream for change notifications.
 func (s *fileSystemServer) Watch(stream pb.FileSystemService_WatchServer) error {
+	// Get client peer information for logging
+	p, ok := peer.FromContext(stream.Context())
+	clientAddr := "unknown"
+	if ok {
+		clientAddr = p.Addr.String()
+	}
+
+	logx.Info("Watch stream started", "client_addr", clientAddr, "share", s.root)
+
 	// One watcher per stream
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
+		logx.Error("Failed to create watcher", "client_addr", clientAddr, "error", err)
 		return err
 	}
-	defer watcher.Close()
+	defer func() {
+		watcher.Close()
+		logx.Info("Watch stream ended", "client_addr", clientAddr)
+	}()
 
 	ctx, cancel := context.WithCancel(stream.Context())
 	defer cancel()
@@ -71,10 +85,20 @@ func (s *fileSystemServer) Watch(stream pb.FileSystemService_WatchServer) error 
 				recvErrCh <- err
 				return
 			}
+
+			logx.Info("Watch request received",
+				"client_addr", clientAddr,
+				"path", req.Path,
+				"recursive", req.Recursive)
+
 			mu.Lock()
 			e := addPath(req.Path, req.Recursive)
 			mu.Unlock()
 			if e != nil {
+				logx.Error("Failed to add watch path",
+					"client_addr", clientAddr,
+					"path", req.Path,
+					"error", e)
 				// Report an ATTRIB with error context using old_path field for details
 				_ = stream.Send(&pb.WatchEvent{
 					Path:      sanitizeRel(req.Path),
@@ -82,6 +106,11 @@ func (s *fileSystemServer) Watch(stream pb.FileSystemService_WatchServer) error 
 					OldPath:   "error: " + e.Error(),
 					Timestamp: time.Now().Unix(),
 				})
+			} else {
+				logx.Info("Watch path added successfully",
+					"client_addr", clientAddr,
+					"path", req.Path,
+					"recursive", req.Recursive)
 			}
 		}
 	}()

@@ -60,6 +60,10 @@ func main() {
 
 	if err := mountRemote(share, mountpoint, addr, readOnly); err != nil {
 		fmt.Fprintf(os.Stderr, "Mount error: %v\n", err)
+		fmt.Fprintf(os.Stderr, "\nTroubleshooting:\n")
+		fmt.Fprintf(os.Stderr, "1. Ensure the server is running: server.exe --share <path>\n")
+		fmt.Fprintf(os.Stderr, "2. Check if the server address is correct: --addr %s\n", addr)
+		fmt.Fprintf(os.Stderr, "3. Verify network connectivity to the server\n")
 		os.Exit(1)
 	}
 }

@@ -24,6 +24,9 @@ type fuseFS struct {
 	path   string // Current path for this node
 }
 
+// Ensure fuseFS implements the required interfaces
+var _ fs.NodeReaddirer = (*fuseFS)(nil)
+
 func newFuseFS(client *grpcClient, share string) *fuseFS {
 	return &fuseFS{
 		client: client,
@@ -34,7 +37,7 @@ func newFuseFS(client *grpcClient, share string) *fuseFS {
 
 func (f *fuseFS) Getattr(ctx context.Context, fh fs.FileHandle, out *fuse.Attr) syscall.Errno {
 	path := f.getPath(ctx)
-	log.Printf("Getattr: path=%s", path)
+	log.Printf("Getattr: path=%s, f.path=%s", path, f.path)
 	if path == "" {
 		log.Printf("Getattr: empty path, returning ENOENT")
 		return syscall.ENOENT
@@ -48,6 +51,13 @@ func (f *fuseFS) Getattr(ctx context.Context, fh fs.FileHandle, out *fuse.Attr) 
 
 	log.Printf("Getattr: Stat success for path=%s, name=%s, isDir=%v", path, info.Name, info.IsDir)
 	f.fillAttr(info, out)
+
+	// Ensure the directory flag is set correctly for FUSE
+	if info.IsDir {
+		out.Mode |= syscall.S_IFDIR
+		log.Printf("Getattr: Set directory flag for path=%s", path)
+	}
+
 	return 0
 }
 
@@ -67,19 +77,19 @@ func (f *fuseFS) Open(ctx context.Context, fh fs.FileHandle, flags uint32) (fs.F
 
 func (f *fuseFS) ReadDir(ctx context.Context) (fs.DirStream, syscall.Errno) {
 	path := f.getPath(ctx)
-	log.Printf("ReadDir: path=%s", path)
+	log.Printf("=== ReadDir CALLED === path=%s, f.path=%s", path, f.path)
 	if path == "" {
 		log.Printf("ReadDir: empty path, returning ENOENT")
 		return nil, syscall.ENOENT
 	}
 
-	// For root directory, use empty path to get share contents
-	requestPath := ""
+	// For root directory, use "." to get share contents (relative to root)
+	requestPath := "."
 	if f.path != "" {
 		requestPath = f.path
 	}
 	log.Printf("ReadDir: calling gRPC ReadDir with requestPath=%s", requestPath)
-	
+
 	entries, _, err := f.client.ReadDir(ctx, requestPath, 0, 0)
 	if err != nil {
 		log.Printf("ReadDir: gRPC call failed, requestPath=%s, error=%v", requestPath, err)
@@ -101,13 +111,123 @@ func (f *fuseFS) ReadDir(ctx context.Context) (fs.DirStream, syscall.Errno) {
 			mode |= syscall.S_IFREG
 		}
 
+		log.Printf("ReadDir: adding entry %s (isDir=%v, mode=%o)", info.Name, info.IsDir, mode)
 		dirEntries = append(dirEntries, fuse.DirEntry{
 			Name: info.Name,
 			Mode: mode,
 		})
 	}
 
+	log.Printf("ReadDir: returning %d directory entries", len(dirEntries))
 	return fs.NewListDirStream(dirEntries), 0
+}
+
+// Readdir implements the NodeReaddirer interface
+func (f *fuseFS) Readdir(ctx context.Context) (fs.DirStream, syscall.Errno) {
+	log.Printf("=== Readdir CALLED === (NodeReaddirer interface)")
+	path := f.getPath(ctx)
+	log.Printf("Readdir: path=%s, f.path=%s", path, f.path)
+	if path == "" {
+		log.Printf("Readdir: empty path, returning ENOENT")
+		return nil, syscall.ENOENT
+	}
+
+	// For root directory, use "." to get share contents (relative to root)
+	requestPath := "."
+	if f.path != "" {
+		requestPath = f.path
+	}
+	log.Printf("Readdir: calling gRPC ReadDir with requestPath=%s", requestPath)
+
+	entries, _, err := f.client.ReadDir(ctx, requestPath, 0, 0)
+	if err != nil {
+		log.Printf("Readdir: gRPC call failed, requestPath=%s, error=%v", requestPath, err)
+		return nil, f.mapError(err)
+	}
+	log.Printf("Readdir: gRPC success, found %d entries", len(entries))
+
+	dirEntries := make([]fuse.DirEntry, 0, len(entries))
+	for _, info := range entries {
+		mode := uint32(0o644)
+		if info.IsDir {
+			mode = 0o755
+		}
+		if info.IsSymlink {
+			mode |= syscall.S_IFLNK
+		} else if info.IsDir {
+			mode |= syscall.S_IFDIR
+		} else {
+			mode |= syscall.S_IFREG
+		}
+
+		log.Printf("Readdir: adding entry %s (isDir=%v, mode=%o)", info.Name, info.IsDir, mode)
+		dirEntries = append(dirEntries, fuse.DirEntry{
+			Name: info.Name,
+			Mode: mode,
+		})
+	}
+
+	log.Printf("Readdir: returning %d directory entries", len(dirEntries))
+	return fs.NewListDirStream(dirEntries), 0
+}
+
+func (f *fuseFS) ReadDirPlus(ctx context.Context, fh fs.FileHandle, entries *fuse.DirEntryList) syscall.Errno {
+	path := f.getPath(ctx)
+	log.Printf("=== ReadDirPlus CALLED === path=%s, f.path=%s", path, f.path)
+	if path == "" {
+		log.Printf("ReadDirPlus: empty path, returning ENOENT")
+		return syscall.ENOENT
+	}
+
+	// For root directory, use "." to get share contents (relative to root)
+	requestPath := "."
+	if f.path != "" {
+		requestPath = f.path
+	}
+	log.Printf("ReadDirPlus: calling gRPC ReadDir with requestPath=%s", requestPath)
+
+	grpcEntries, _, err := f.client.ReadDir(ctx, requestPath, 0, 0)
+	if err != nil {
+		log.Printf("ReadDirPlus: gRPC call failed, requestPath=%s, error=%v", requestPath, err)
+		return f.mapError(err)
+	}
+	log.Printf("ReadDirPlus: gRPC success, found %d entries", len(grpcEntries))
+
+	for _, info := range grpcEntries {
+		mode := uint32(0o644)
+		if info.IsDir {
+			mode = 0o755
+		}
+		if info.IsSymlink {
+			mode |= syscall.S_IFLNK
+		} else if info.IsDir {
+			mode |= syscall.S_IFDIR
+		} else {
+			mode |= syscall.S_IFREG
+		}
+
+		log.Printf("ReadDirPlus: adding entry %s (isDir=%v, mode=%o)", info.Name, info.IsDir, mode)
+
+		// Create child inode for the entry
+		childPath := filepath.Join(path, info.Name)
+		child := f.NewInode(ctx, &fuseFS{client: f.client, share: f.share, path: childPath}, fs.StableAttr{
+			Mode: mode,
+			Ino:  f.hashIno(childPath),
+		})
+
+		// Add to directory entry list
+		if !entries.AddDirEntry(fuse.DirEntry{
+			Name: info.Name,
+			Mode: mode,
+			Ino:  child.StableAttr().Ino,
+		}) {
+			log.Printf("ReadDirPlus: entries list full, stopping")
+			break
+		}
+	}
+
+	log.Printf("ReadDirPlus: returning %d directory entries", len(grpcEntries))
+	return 0
 }
 
 func (f *fuseFS) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
@@ -139,7 +259,7 @@ func (f *fuseFS) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*
 func (f *fuseFS) getPath(ctx context.Context) string {
 	// Return the current path for this node
 	if f.path == "" {
-		return f.share // Root directory
+		return "." // Root directory - use relative path
 	}
 	return f.path
 }
@@ -153,12 +273,19 @@ func (f *fuseFS) fillAttr(info *pb.FileInfo, out *fuse.Attr) {
 	out.Mtime = uint64(info.ModTime)
 	out.Ctime = uint64(info.ChangeTime)
 	out.Nlink = 1
+
+	// Ensure directory flag is set for directories
+	if info.IsDir {
+		out.Mode |= syscall.S_IFDIR
+		log.Printf("fillAttr: Set directory flag for %s", info.Name)
+	}
 }
 
 func (f *fuseFS) modeFromInfo(info *pb.FileInfo) uint32 {
 	mode := info.Mode
 	if info.IsDir {
 		mode |= syscall.S_IFDIR
+		log.Printf("modeFromInfo: Set directory flag for %s", info.Name)
 	} else if info.IsSymlink {
 		mode |= syscall.S_IFLNK
 	} else {

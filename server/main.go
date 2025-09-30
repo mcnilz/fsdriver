@@ -1,15 +1,83 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"net"
 	"os"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/peer"
 
 	pb "github.com/example/fsdriver/proto"
 )
+
+// loggingInterceptor logs client connections and method calls
+func loggingInterceptor(share string) grpc.UnaryServerInterceptor {
+	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+		// Get client peer information
+		p, ok := peer.FromContext(ctx)
+		clientAddr := "unknown"
+		if ok {
+			clientAddr = p.Addr.String()
+		}
+
+		// Log the method call
+		logx.Info("gRPC method called",
+			"method", info.FullMethod,
+			"client_addr", clientAddr,
+			"share", share)
+
+		// Call the actual handler
+		resp, err := handler(ctx, req)
+
+		// Log any errors
+		if err != nil {
+			logx.Error("gRPC method error",
+				"method", info.FullMethod,
+				"client_addr", clientAddr,
+				"error", err)
+		}
+
+		return resp, err
+	}
+}
+
+// streamLoggingInterceptor logs client connections for streaming methods
+func streamLoggingInterceptor(share string) grpc.StreamServerInterceptor {
+	return func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+		// Get client peer information
+		p, ok := peer.FromContext(ss.Context())
+		clientAddr := "unknown"
+		if ok {
+			clientAddr = p.Addr.String()
+		}
+
+		// Log the stream start
+		logx.Info("gRPC stream started",
+			"method", info.FullMethod,
+			"client_addr", clientAddr,
+			"share", share)
+
+		// Call the actual handler
+		err := handler(srv, ss)
+
+		// Log stream end
+		if err != nil {
+			logx.Error("gRPC stream error",
+				"method", info.FullMethod,
+				"client_addr", clientAddr,
+				"error", err)
+		} else {
+			logx.Info("gRPC stream ended",
+				"method", info.FullMethod,
+				"client_addr", clientAddr)
+		}
+
+		return err
+	}
+}
 
 func main() {
 	var share string
@@ -57,7 +125,10 @@ func main() {
 		os.Exit(1)
 	}
 
-	grpcServer := grpc.NewServer()
+	grpcServer := grpc.NewServer(
+		grpc.UnaryInterceptor(loggingInterceptor(share)),
+		grpc.StreamInterceptor(streamLoggingInterceptor(share)),
+	)
 	srv, err := NewFileSystemServer(share)
 	if err != nil {
 		logx.Error("failed to initialize server", "error", err)
